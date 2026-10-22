@@ -7,6 +7,12 @@ const LINKS = [
   { label: "Resume", href: "#resume" },
 ];
 
+function overlapArea(a, b) {
+  const width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  return width > 0 && height > 0 ? width * height : 0;
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -124,6 +130,89 @@ export default function Hero() {
       return scrollable <= 0 ? 0 : clamp(-section.getBoundingClientRect().top / scrollable, 0, 1);
     };
 
+    const placeBubble = () => {
+      if (!bubbleRef.current || !path.getTotalLength()) return;
+      const bubble = bubbleRef.current.querySelector(".bubble");
+      const mobile = window.matchMedia("(max-width: 800px)").matches;
+      const faceSize = mobile ? 62 : 84;
+      const width = stage.clientWidth;
+      const height = stage.clientHeight;
+      const total = path.getTotalLength();
+      const origin = path.getPointAtLength(rangeRef.current.start * total);
+      const faceLeft = origin.x - faceSize / 2;
+      const faceRight = origin.x + faceSize / 2;
+      const faceTop = origin.y - faceSize * 0.64;
+
+      const stageRect = stage.getBoundingClientRect();
+      const obstacles = [".character", ".headline", ".tagline"].map((selector) => {
+        const rect = stage.querySelector(selector).getBoundingClientRect();
+        return {
+          left: rect.left - stageRect.left,
+          top: rect.top - stageRect.top,
+          right: rect.right - stageRect.left,
+          bottom: rect.bottom - stageRect.top,
+        };
+      });
+      const portrait = obstacles[0];
+      const portraitWidth = portrait.right - portrait.left;
+      const portraitHeight = portrait.bottom - portrait.top;
+      obstacles[0] = {
+        left: portrait.left + portraitWidth * 0.23,
+        right: portrait.left + portraitWidth * 0.76,
+        top: portrait.top + portraitHeight * 0.06,
+        bottom: portrait.top + portraitHeight * 0.96,
+      };
+      if (mobile) {
+        const textRight = Math.max(obstacles[1].right, obstacles[2].right);
+        const open = width - 16 - textRight;
+        bubble.style.maxWidth = `${Math.max(96, Math.min(168, open))}px`;
+      } else {
+        bubble.style.maxWidth = "";
+      }
+      const bubbleWidth = bubble.offsetWidth;
+      const bubbleHeight = bubble.offsetHeight;
+
+      let floor = 8;
+      if (mobile) {
+        const pin = section.querySelector(".hero-pin");
+        const pinRect = pin.getBoundingClientRect();
+        const split = parseFloat(pin.style.getPropertyValue("--split")) / 100 || 0.62;
+        floor = Math.max(8, pinRect.top + pinRect.height * split - stageRect.top + 8);
+      }
+
+      const pad = 12;
+      const character = obstacles[0];
+      const textRight = Math.max(obstacles[1].right, obstacles[2].right);
+      const textLeft = Math.min(obstacles[1].left, obstacles[2].left);
+      const options = [
+        { tail: "left", left: origin.x + faceSize * 0.28, top: faceTop - bubbleHeight - 6 },
+        { tail: "right", left: origin.x - bubbleWidth - faceSize * 0.12, top: faceTop - bubbleHeight - 6 },
+        { tail: "left", left: faceRight + 8, top: origin.y - bubbleHeight * 0.85 },
+        { tail: "right", left: faceLeft - bubbleWidth - 8, top: origin.y - bubbleHeight * 0.85 },
+        { tail: "left", left: textRight + 12, top: obstacles[2].top },
+        { tail: "right", left: textLeft - bubbleWidth - 12, top: obstacles[2].top },
+      ];
+
+      const scored = options.map((option) => {
+        const minTop = option.top < character.top ? pad : floor;
+        let left = clamp(option.left, pad, Math.max(pad, width - bubbleWidth - pad));
+        let top = clamp(option.top, minTop, Math.max(minTop, height - bubbleHeight - pad));
+        const box = { left, top, right: left + bubbleWidth, bottom: top + bubbleHeight };
+        const textOverlap = overlapArea(box, obstacles[1]) + overlapArea(box, obstacles[2]);
+        const portraitOverlap = overlapArea(box, obstacles[0]);
+        const overlap = textOverlap * 30 + portraitOverlap;
+        const shift = Math.abs(left - option.left) + Math.abs(top - option.top);
+        const room = option.tail === "left" ? width - faceRight : faceLeft;
+        return { ...option, left, top, overlap, shift, room };
+      });
+
+      scored.sort((a, b) => a.overlap - b.overlap || a.shift - b.shift || b.room - a.room);
+      const best = scored[0];
+      bubbleRef.current.style.left = `${best.left}px`;
+      bubbleRef.current.style.top = `${best.top}px`;
+      bubbleRef.current.dataset.tail = best.tail;
+    };
+
     const bounceFace = () => {
       const face = faceRef.current;
       if (!face || reducedMotion) return;
@@ -151,13 +240,8 @@ export default function Hero() {
         }
         const nextText = cheerAt ? "Yayy!!" : "Scroll to make me smile!";
         if (bubble.textContent !== nextText) {
-          const before = bubble.offsetWidth;
-          const tail = bubbleRef.current.dataset.tail;
-          const left = parseFloat(bubbleRef.current.style.left) || 0;
           bubble.textContent = nextText;
-          if (tail === "right") {
-            bubbleRef.current.style.left = `${left + before - bubble.offsetWidth}px`;
-          }
+          placeBubble();
         }
         const elapsed = cheerAt ? performance.now() - cheerAt : 0;
         const held = elapsed < 1000 ? 0 : clamp((elapsed - 1000) / 600, 0, 1);
@@ -196,33 +280,7 @@ export default function Hero() {
       faceRef.current.style.width = `${faceSize}px`;
       faceRef.current.style.height = `${faceSize}px`;
 
-      const origin = path.getPointAtLength(start * total);
-      const bubble = bubbleRef.current.querySelector(".bubble");
-      const bubbleWidth = bubble.offsetWidth;
-      const bubbleHeight = bubble.offsetHeight;
-      let left = origin.x + faceSize * 0.46;
-      let top = origin.y - bubbleHeight - faceSize * (mobile ? 0.7 : 0.78);
-      let tail = "left";
-
-      if (mobile) {
-        const pin = section.querySelector(".hero-pin");
-        const pinRect = pin.getBoundingClientRect();
-        const stageRect = stage.getBoundingClientRect();
-        const split = parseFloat(pin.style.getPropertyValue("--split")) / 100 || 0.62;
-        const blueTop = pinRect.top + pinRect.height * split - stageRect.top;
-        tail = "right";
-        left = Math.min(origin.x - bubbleWidth * 0.35, width - bubbleWidth - 16);
-        top = Math.max(blueTop + 10, origin.y - bubbleHeight - 28);
-      } else if (left + bubbleWidth > width - 12) {
-        left = origin.x - bubbleWidth - faceSize * 0.2;
-        tail = "right";
-      }
-      left = clamp(left, 12, Math.max(12, width - bubbleWidth - 12));
-      top = clamp(top, 8, Math.max(8, height - bubbleHeight - 12));
-
-      bubbleRef.current.style.left = `${left}px`;
-      bubbleRef.current.style.top = `${top}px`;
-      bubbleRef.current.dataset.tail = tail;
+      placeBubble();
 
       if (!drawn) {
         if (!reducedMotion) {

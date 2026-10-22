@@ -31,6 +31,147 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function overlapArea(a, b) {
+  const width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  return width > 0 && height > 0 ? width * height : 0;
+}
+
+function placeNote({ note, cards, section, faceTop, faceCenter, faceSize, narrow, preferredCard }) {
+  const pad = narrow ? 12 : 16;
+  const gap = narrow ? 8 : 10;
+  const noteWidth = note.offsetWidth || 1;
+  const noteHeight = note.offsetHeight || 1;
+  const sectionRect = section.getBoundingClientRect();
+  const faceLeft = faceCenter - faceSize / 2;
+  const faceRight = faceCenter + faceSize / 2;
+  const faceMid = faceTop + faceSize * 0.42;
+
+  const textBoxes = [...section.querySelectorAll(".projects-heading h2, .projects-heading p")].map((node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const rect = range.getBoundingClientRect();
+    return {
+      left: rect.left - sectionRect.left,
+      top: rect.top - sectionRect.top,
+      right: rect.right - sectionRect.left,
+      bottom: rect.bottom - sectionRect.top,
+    };
+  });
+  const cardBoxes = cards.map((card) => {
+    const rect = card.getBoundingClientRect();
+    return {
+      left: rect.left - sectionRect.left,
+      top: rect.top - sectionRect.top,
+      right: rect.right - sectionRect.left,
+      bottom: rect.bottom - sectionRect.top,
+    };
+  });
+  const blocked = cardBoxes.concat(textBoxes);
+
+  const view = {
+    left: pad - sectionRect.left,
+    top: 8 - sectionRect.top,
+    right: window.innerWidth - pad - sectionRect.left,
+    bottom: window.innerHeight - 8 - sectionRect.top,
+  };
+
+  const candidates = [];
+  const measure = (side, left, top) => {
+    const box = { left, top, right: left + noteWidth, bottom: top + noteHeight };
+    const overlap = blocked.reduce((sum, card) => sum + overlapArea(box, card), 0);
+    const overflow =
+      Math.max(0, view.left - box.left) +
+      Math.max(0, box.right - view.right) +
+      Math.max(0, view.top - box.top) +
+      Math.max(0, box.bottom - view.bottom);
+    const centerX = left + noteWidth / 2;
+    const centerY = top + noteHeight / 2;
+    const distance = Math.hypot(centerX - faceCenter, centerY - (faceTop + faceSize / 2));
+    return { side, left, top, overlap, overflow, distance };
+  };
+
+  const add = (side, anchorX, anchorY) => {
+    let left = anchorX;
+    let top = anchorY;
+    if (side === "above") {
+      left = anchorX - noteWidth / 2;
+      top = anchorY - noteHeight;
+    } else if (side === "left") {
+      left = anchorX - noteWidth;
+      top = anchorY - noteHeight / 2;
+    } else {
+      top = anchorY - noteHeight / 2;
+    }
+
+    const raw = measure(side, left, top);
+    let shiftX = 0;
+    let shiftY = 0;
+    if (left < view.left) shiftX = view.left - left;
+    if (left + noteWidth + shiftX > view.right) shiftX += view.right - (left + noteWidth + shiftX);
+    if (top < view.top) shiftY = view.top - top;
+    if (top + noteHeight + shiftY > view.bottom) shiftY += view.bottom - (top + noteHeight + shiftY);
+    const fitted = shiftX || shiftY ? measure(side, left + shiftX, top + shiftY) : raw;
+    // Sliding into view is only useful when it stays off the cards.
+    candidates.push(fitted.overlap <= raw.overlap + 8 ? fitted : raw);
+  };
+
+  add("above", faceCenter, faceTop - gap);
+  add("left", faceLeft - gap, faceMid);
+  add("right", faceRight + gap, faceMid);
+
+  cardBoxes.forEach((card, index) => {
+    const nearFace = faceTop < card.bottom && faceTop + faceSize > card.top - 80;
+    if (!nearFace && index !== preferredCard) return;
+    add("above", faceCenter, card.top - gap);
+    const roomLeft = card.left - view.left;
+    const roomRight = view.right - card.right;
+    const besideY = clamp(faceMid, card.top + noteHeight / 2 + 8, card.bottom - noteHeight / 2 - 8);
+    if (roomLeft > noteWidth * 0.55) add("left", card.left - gap, besideY);
+    if (roomRight > noteWidth * 0.55) add("right", card.right + gap, besideY);
+  });
+
+  const spaceLeft = faceLeft - view.left;
+  const spaceRight = view.right - faceRight;
+  candidates.sort((a, b) => {
+    if (a.overlap !== b.overlap) return a.overlap - b.overlap;
+    if (a.overflow !== b.overflow) return a.overflow - b.overflow;
+    const aClear = a.overlap < 8 && a.overflow < 2;
+    const bClear = b.overlap < 8 && b.overflow < 2;
+    if (aClear && bClear && a.side !== b.side) {
+      if (!narrow && a.side === "above") return -1;
+      if (!narrow && b.side === "above") return 1;
+      if (narrow && spaceLeft > spaceRight + 24 && a.side === "left") return -1;
+      if (narrow && spaceRight > spaceLeft + 24 && a.side === "right") return -1;
+      if (narrow && spaceLeft > spaceRight + 24 && b.side === "left") return 1;
+      if (narrow && spaceRight > spaceLeft + 24 && b.side === "right") return 1;
+    }
+    return a.distance - b.distance;
+  });
+
+  const best = candidates[0];
+  if (!best || best.overlap > 20 || best.overflow > 24) {
+    note.style.opacity = "0";
+    return;
+  }
+  note.dataset.side = best.side;
+  if (best.side === "above") {
+    note.style.left = `${best.left + noteWidth / 2}px`;
+    note.style.top = `${best.top + noteHeight}px`;
+    note.style.setProperty("--origin", "50% 100%");
+    const dot = clamp(((faceCenter - best.left) / noteWidth) * 100, 16, 84);
+    note.style.setProperty("--dot", `${dot}%`);
+  } else if (best.side === "left") {
+    note.style.left = `${best.left + noteWidth}px`;
+    note.style.top = `${best.top + noteHeight / 2}px`;
+    note.style.setProperty("--origin", "100% 58%");
+  } else {
+    note.style.left = `${best.left}px`;
+    note.style.top = `${best.top + noteHeight / 2}px`;
+    note.style.setProperty("--origin", "0% 58%");
+  }
+}
+
 function contentRail(width) {
   const narrow = width <= 800;
   const face = narrow ? 56 : 72;
@@ -81,8 +222,11 @@ export default function Projects() {
       const firstTop = origin + first.offsetTop;
       const approachEnd = sectionTop + firstTop - firstMeet;
       const lineEnd = origin + last.offsetTop + last.offsetHeight;
-      const chin = faceSize * (54 / 1254);
-      const sticks = cards.map((card) => origin + card.offsetTop + chin);
+      // The smile's chin ends at 67% of the image. The rest of the center is
+      // empty, which is where the line shows. Drop the face so the chin meets
+      // the card and the lower hair rests on it.
+      const neckDrop = faceSize * 0.4 + 4;
+      const sticks = cards.map((card) => origin + card.offsetTop + neckDrop);
       const holdFor = (index) => Math.min(narrow ? 90 : 110, view * (index === 0 ? 0.12 : 0.08));
       const meetFor = (index) => (index === 0 ? firstMeet : laterMeet);
 
@@ -154,13 +298,23 @@ export default function Projects() {
         cursorScroll = arrivedScroll + hold;
         cursorTop = sticks[index];
       }
-      top = clamp(top, 0, lineEnd);
+      top = clamp(top, 0, lineEnd + neckDrop);
+
+      const faceTopEdge = top - faceSize;
+      let behind = false;
+      cards.forEach((card) => {
+        const cardTop = origin + card.offsetTop;
+        const cardBottom = cardTop + card.offsetHeight;
+        const into = top - cardTop;
+        if (into > neckDrop + 10 && faceTopEdge < cardBottom - 12) behind = true;
+      });
 
       face.style.top = `${top}px`;
       face.style.left = `${lineX}px`;
       face.style.width = `${faceSize}px`;
       face.style.height = `${faceSize}px`;
-      face.classList.toggle("is-stuck", stuck !== -1);
+      face.classList.toggle("is-stuck", stuck !== -1 && !behind);
+      face.classList.toggle("is-behind", behind);
       section.style.setProperty("--line-x", `${lineX}px`);
 
       const sectionRect = section.getBoundingClientRect();
@@ -184,15 +338,16 @@ export default function Projects() {
         shown = message;
       }
       note.style.opacity = "1";
-      note.style.top = `${top - faceSize - 12}px`;
-      const pad = narrow ? 14 : 20;
-      const width = note.offsetWidth || 1;
-      const limit = window.innerWidth;
-      let center = lineX;
-      if (center + width / 2 > limit - pad) center = limit - pad - width / 2;
-      if (center - width / 2 < pad) center = pad + width / 2;
-      note.style.left = `${center}px`;
-      note.style.setProperty("--dot", `${clamp(50 + ((lineX - center) / width) * 100, 16, 84)}%`);
+      placeNote({
+        note,
+        cards,
+        section,
+        faceTop: top - faceSize,
+        faceCenter: lineX,
+        faceSize,
+        narrow,
+        preferredCard: stuck,
+      });
       if (fresh) {
         void note.offsetWidth;
         note.classList.add("is-in");
@@ -256,10 +411,12 @@ export default function Projects() {
       <div className="project-face" ref={faceRef}>
         <img src="/images/face-smile.png" alt="" />
       </div>
-      <div className="project-note" ref={noteRef}>
-        <span className="project-thought project-thought-1" />
-        <span className="project-thought project-thought-2" />
-        <p />
+      <div className="project-note" ref={noteRef} data-side="above">
+        <div className="project-note-body">
+          <span className="project-thought project-thought-1" />
+          <span className="project-thought project-thought-2" />
+          <p />
+        </div>
       </div>
     </section>
   );

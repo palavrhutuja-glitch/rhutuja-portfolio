@@ -517,6 +517,8 @@ button:focus-visible {
   .bubble {
     font-size: 12.5px;
     padding: 9px 12px;
+    white-space: normal;
+    max-width: min(168px, 46vw);
   }
 }
 
@@ -679,6 +681,10 @@ button:focus-visible {
   z-index: 4;
 }
 
+.project-face.is-behind {
+  z-index: 0;
+}
+
 .project-face img {
   display: block;
   width: 100%;
@@ -696,21 +702,33 @@ button:focus-visible {
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, -100%);
-  transform-origin: var(--dot, 50%) 100%;
 }
 
-.project-note.is-in {
+.project-note[data-side="left"] {
+  transform: translate(-100%, -50%);
+}
+
+.project-note[data-side="right"] {
+  transform: translate(0, -50%);
+}
+
+.project-note-body {
+  position: relative;
+  transform-origin: var(--origin, 50% 100%);
+}
+
+.project-note.is-in .project-note-body {
   animation: note-rise 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes note-rise {
   from {
     opacity: 0;
-    transform: translate(-50%, -78%) scale(0.82);
+    transform: scale(0.82);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -100%) scale(1);
+    transform: scale(1);
   }
 }
 
@@ -749,6 +767,35 @@ button:focus-visible {
   margin-left: -2px;
 }
 
+.project-note[data-side="left"] .project-thought-1,
+.project-note[data-side="right"] .project-thought-1 {
+  bottom: 14px;
+  margin: 0;
+}
+
+.project-note[data-side="left"] .project-thought-2,
+.project-note[data-side="right"] .project-thought-2 {
+  bottom: 26px;
+  margin: 0;
+}
+
+.project-note[data-side="left"] .project-thought {
+  left: auto;
+  right: -16px;
+}
+
+.project-note[data-side="left"] .project-thought-2 {
+  right: -8px;
+}
+
+.project-note[data-side="right"] .project-thought {
+  left: -16px;
+}
+
+.project-note[data-side="right"] .project-thought-2 {
+  left: -8px;
+}
+
 @media (max-width: 800px) {
   .projects {
     padding-top: 56px;
@@ -785,7 +832,7 @@ button:focus-visible {
   }
 
   .project-note {
-    max-width: min(190px, calc(100vw - 32px));
+    max-width: min(136px, calc(100vw - 32px));
   }
 
   .project-note p {

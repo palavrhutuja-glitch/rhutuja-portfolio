@@ -323,7 +323,7 @@ export default function Projects() {
       face.style.opacity = handedOff && inView ? "1" : "0";
       if (heroFace) heroFace.style.opacity = handedOff ? "0" : "1";
 
-      if (stuck === -1 || !handedOff) {
+      if (stuck === -1 || !handedOff || !inView) {
         note.classList.remove("is-in");
         note.style.opacity = "0";
         shown = "";

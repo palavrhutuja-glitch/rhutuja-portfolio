@@ -79,7 +79,7 @@ function buildPoints(stage) {
 
 function contentRail(width) {
   const narrow = width <= 800;
-  const face = narrow ? 62 : 84;
+  const face = narrow ? 72 : 84;
   const gutter = narrow ? 24 : 64;
   const frame = Math.min(width - gutter * 2, 960);
   const frameRight = (width - frame) / 2 + frame;
@@ -124,21 +124,22 @@ export default function Hero() {
     let smiled = false;
     let cheerAt = 0;
     let frame = 0;
+    let bubbleShift = null;
 
     const readProgress = () => {
       const scrollable = section.offsetHeight - window.innerHeight;
       return scrollable <= 0 ? 0 : clamp(-section.getBoundingClientRect().top / scrollable, 0, 1);
     };
 
-    const placeBubble = () => {
+    const placeBubble = (point) => {
       if (!bubbleRef.current || !path.getTotalLength()) return;
       const bubble = bubbleRef.current.querySelector(".bubble");
       const mobile = window.matchMedia("(max-width: 800px)").matches;
-      const faceSize = mobile ? 62 : 84;
+      const faceSize = mobile ? 72 : 84;
       const width = stage.clientWidth;
       const height = stage.clientHeight;
       const total = path.getTotalLength();
-      const origin = path.getPointAtLength(rangeRef.current.start * total);
+      const origin = point || path.getPointAtLength(rangeRef.current.start * total);
       const faceLeft = origin.x - faceSize / 2;
       const faceRight = origin.x + faceSize / 2;
       const faceTop = origin.y - faceSize * 0.64;
@@ -172,14 +173,17 @@ export default function Hero() {
       const bubbleWidth = bubble.offsetWidth;
       const bubbleHeight = bubble.offsetHeight;
 
-      let floor = 8;
       if (mobile) {
-        const pin = section.querySelector(".hero-pin");
-        const pinRect = pin.getBoundingClientRect();
-        const split = parseFloat(pin.style.getPropertyValue("--split")) / 100 || 0.62;
-        floor = Math.max(8, pinRect.top + pinRect.height * split - stageRect.top + 8);
+        const sideLeft = faceLeft - bubbleWidth - 12;
+        const left = sideLeft >= 12 ? sideLeft : faceRight + 12;
+        const top = clamp(faceTop - 4, 12, Math.max(12, height - bubbleHeight - 12));
+        bubbleRef.current.style.left = `${clamp(left, 12, Math.max(12, width - bubbleWidth - 12))}px`;
+        bubbleRef.current.style.top = `${top}px`;
+        bubbleRef.current.dataset.tail = sideLeft >= 12 ? "right" : "left";
+        return;
       }
 
+      const floor = 8;
       const pad = 12;
       const character = obstacles[0];
       const textRight = Math.max(obstacles[1].right, obstacles[2].right);
@@ -208,9 +212,19 @@ export default function Hero() {
 
       scored.sort((a, b) => a.overlap - b.overlap || a.shift - b.shift || b.room - a.room);
       const best = scored[0];
-      bubbleRef.current.style.left = `${best.left}px`;
-      bubbleRef.current.style.top = `${best.top}px`;
-      bubbleRef.current.dataset.tail = best.tail;
+      if (!bubbleShift || bubbleShift.label !== bubble.textContent) {
+        bubbleShift = {
+          label: bubble.textContent,
+          dx: best.left - origin.x,
+          dy: best.top - origin.y,
+          tail: best.tail,
+        };
+      }
+      const left = clamp(origin.x + bubbleShift.dx, pad, Math.max(pad, width - bubbleWidth - pad));
+      const top = clamp(origin.y + bubbleShift.dy, floor, Math.max(floor, height - bubbleHeight - floor));
+      bubbleRef.current.style.left = `${left}px`;
+      bubbleRef.current.style.top = `${top}px`;
+      bubbleRef.current.dataset.tail = bubbleShift.tail;
     };
 
     const bounceFace = () => {
@@ -241,8 +255,9 @@ export default function Hero() {
         const nextText = cheerAt ? "Yayy!!" : "Scroll to make me smile!";
         if (bubble.textContent !== nextText) {
           bubble.textContent = nextText;
-          placeBubble();
+          bubbleShift = null;
         }
+        placeBubble(total > 0 ? path.getPointAtLength((rangeRef.current.start + (rangeRef.current.end - rangeRef.current.start) * value) * total) : null);
         const elapsed = cheerAt ? performance.now() - cheerAt : 0;
         const held = elapsed < 1000 ? 0 : clamp((elapsed - 1000) / 600, 0, 1);
         const scrollFade = smoothstep(0.18, 0.5, value);
@@ -255,7 +270,7 @@ export default function Hero() {
       const points = buildPoints(stage);
       pointsRef.current = points;
       const mobile = window.matchMedia("(max-width: 800px)").matches;
-      const faceSize = mobile ? 62 : 84;
+      const faceSize = mobile ? 72 : 84;
 
       path.setAttribute("d", roundedPath(points, mobile ? 12 : 36));
       dotRef.current.setAttribute("cx", points[0].x);
@@ -268,7 +283,7 @@ export default function Hero() {
       svgRef.current.setAttribute("height", height);
 
       const total = path.getTotalLength();
-      const start = clamp((faceSize * 0.46 + 18) / total, 0.04, 0.24);
+      const start = 0;
       let end = 1;
       for (let step = 0; step < 40; step += 1) {
         const probe = path.getPointAtLength(end * total);
@@ -280,6 +295,7 @@ export default function Hero() {
       faceRef.current.style.width = `${faceSize}px`;
       faceRef.current.style.height = `${faceSize}px`;
 
+      bubbleShift = null;
       placeBubble();
 
       if (!drawn) {

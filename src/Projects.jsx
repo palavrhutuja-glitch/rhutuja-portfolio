@@ -47,6 +47,12 @@ function placeNote({ note, cards, section, faceTop, faceCenter, faceSize, narrow
   const faceRight = faceCenter + faceSize / 2;
   const faceMid = faceTop + faceSize * 0.42;
 
+  const faceBox = {
+    left: faceLeft - 8,
+    top: faceTop - 4,
+    right: faceRight + 8,
+    bottom: faceTop + faceSize * 0.92,
+  };
   const textBoxes = [...section.querySelectorAll(".projects-heading h2, .projects-heading p")].map((node) => {
     const range = document.createRange();
     range.selectNodeContents(node);
@@ -67,7 +73,7 @@ function placeNote({ note, cards, section, faceTop, faceCenter, faceSize, narrow
       bottom: rect.bottom - sectionRect.top,
     };
   });
-  const blocked = cardBoxes.concat(textBoxes);
+  const blocked = cardBoxes.concat(textBoxes, [faceBox]);
 
   const view = {
     left: pad - sectionRect.left,
@@ -116,41 +122,41 @@ function placeNote({ note, cards, section, faceTop, faceCenter, faceSize, narrow
     candidates.push(fitted.overlap <= raw.overlap + 8 ? fitted : raw);
   };
 
-  add("above", faceCenter, faceTop - gap);
-  add("left", faceLeft - gap, faceMid);
-  add("right", faceRight + gap, faceMid);
-
-  cardBoxes.forEach((card, index) => {
-    const nearFace = faceTop < card.bottom && faceTop + faceSize > card.top - 80;
-    if (!nearFace && index !== preferredCard) return;
-    add("above", faceCenter, card.top - gap);
-    const roomLeft = card.left - view.left;
-    const roomRight = view.right - card.right;
-    const besideY = clamp(faceMid, card.top + noteHeight / 2 + 8, card.bottom - noteHeight / 2 - 8);
-    if (roomLeft > noteWidth * 0.55) add("left", card.left - gap, besideY);
-    if (roomRight > noteWidth * 0.55) add("right", card.right + gap, besideY);
-  });
+  // The thought sits beside her head, in the space above the card, not on her face.
+  add("left", faceLeft - gap, faceTop + faceSize * 0.34);
+  add("right", faceRight + gap, faceTop + faceSize * 0.34);
+  add("above", faceCenter, faceTop - gap - 18);
 
   const spaceLeft = faceLeft - view.left;
   const spaceRight = view.right - faceRight;
+  const prefer = spaceLeft >= spaceRight ? "left" : "right";
   candidates.sort((a, b) => {
-    if (a.overlap !== b.overlap) return a.overlap - b.overlap;
+    const aFace = overlapArea(
+      { left: a.left, top: a.top, right: a.left + noteWidth, bottom: a.top + noteHeight },
+      faceBox
+    );
+    const bFace = overlapArea(
+      { left: b.left, top: b.top, right: b.left + noteWidth, bottom: b.top + noteHeight },
+      faceBox
+    );
+    if (aFace !== bFace) return aFace - bFace;
     if (a.overflow !== b.overflow) return a.overflow - b.overflow;
-    const aClear = a.overlap < 8 && a.overflow < 2;
-    const bClear = b.overlap < 8 && b.overflow < 2;
-    if (aClear && bClear && a.side !== b.side) {
-      if (!narrow && a.side === "above") return -1;
-      if (!narrow && b.side === "above") return 1;
-      if (narrow && spaceLeft > spaceRight + 24 && a.side === "left") return -1;
-      if (narrow && spaceRight > spaceLeft + 24 && a.side === "right") return -1;
-      if (narrow && spaceLeft > spaceRight + 24 && b.side === "left") return 1;
-      if (narrow && spaceRight > spaceLeft + 24 && b.side === "right") return 1;
+    if (a.side !== b.side) {
+      if (a.side === prefer) return -1;
+      if (b.side === prefer) return 1;
     }
+    if (a.overlap !== b.overlap) return a.overlap - b.overlap;
     return a.distance - b.distance;
   });
 
   const best = candidates[0];
-  if (!best || best.overlap > 20 || best.overflow > 24) {
+  const bestFace = best
+    ? overlapArea(
+        { left: best.left, top: best.top, right: best.left + noteWidth, bottom: best.top + noteHeight },
+        faceBox
+      )
+    : 1;
+  if (!best || bestFace > 0 || best.overflow > 24) {
     note.style.opacity = "0";
     return;
   }
@@ -174,7 +180,7 @@ function placeNote({ note, cards, section, faceTop, faceCenter, faceSize, narrow
 
 function contentRail(width) {
   const narrow = width <= 800;
-  const face = narrow ? 56 : 72;
+  const face = narrow ? 72 : 84;
   const gutter = narrow ? 24 : 64;
   const frame = Math.min(width - gutter * 2, 960);
   const frameRight = (width - frame) / 2 + frame;
@@ -193,6 +199,7 @@ export default function Projects() {
     const noteText = note.querySelector("p");
     let frame = 0;
     let shown = "";
+    let landed = -1;
 
     const place = () => {
       const cards = [...section.querySelectorAll(".project-card")];
@@ -207,7 +214,7 @@ export default function Projects() {
       const path = document.querySelector(".trail-path");
       const stage = document.querySelector(".stage");
       const narrow = section.clientWidth <= 800;
-      const faceSize = narrow ? 56 : 72;
+      const faceSize = narrow ? 72 : 84;
       let lineX = contentRail(section.clientWidth);
       if (path && stage && path.getTotalLength()) {
         const end = path.getPointAtLength(path.getTotalLength());
@@ -221,13 +228,15 @@ export default function Projects() {
       const laterMeet = Math.min(view * 0.5, view - 160);
       const firstTop = origin + first.offsetTop;
       const approachEnd = sectionTop + firstTop - firstMeet;
-      const lineEnd = origin + last.offsetTop + last.offsetHeight;
       // The smile's chin ends at 67% of the image. The rest of the center is
       // empty, which is where the line shows. Drop the face so the chin meets
       // the card and the lower hair rests on it.
-      const neckDrop = faceSize * 0.4 + 4;
+      const neckDrop = 8;
       const sticks = cards.map((card) => origin + card.offsetTop + neckDrop);
-      const holdFor = (index) => Math.min(narrow ? 90 : 110, view * (index === 0 ? 0.12 : 0.08));
+      const holdFor = (index) => {
+        if (index === cards.length - 1) return narrow ? 36 : 48;
+        return Math.min(narrow ? 90 : 110, view * (index === 0 ? 0.12 : 0.08));
+      };
       const meetFor = (index) => (index === 0 ? firstMeet : laterMeet);
 
       let free = 0;
@@ -240,6 +249,7 @@ export default function Projects() {
       }
 
       const bubbleRoom = narrow ? 84 : 100;
+      const meet = Math.min(view * 0.42, view - 160);
       let stuck = -1;
       let top = free;
       let cursorScroll = handoff;
@@ -285,45 +295,81 @@ export default function Projects() {
           const t = clamp((scrollY - startScroll) / travelSpan, 0, 1);
           const eased = t * t * (3 - 2 * t);
           top = startTop + (sticks[index] - startTop) * eased;
-          if (t < 0.16) stuck = index - 1;
+          stuck = -1;
           break;
         }
 
         const arrivedScroll = startScroll + travelSpan;
-        if (scrollY < arrivedScroll + hold || index === sticks.length - 1) {
+        if (scrollY < arrivedScroll + hold) {
           top = sticks[index];
           stuck = index;
+          break;
+        }
+        if (index === sticks.length - 1) {
+          // Leave the last card the way she leaves the earlier ones: a long
+          // ease into the same on-screen band, then hold there. About picks
+          // her up in that band instead of chasing the seam off the top.
+          const releaseScroll = arrivedScroll + hold;
+          const travel = Math.max(view * 0.85, 1);
+          const t = clamp((scrollY - releaseScroll) / travel, 0, 1);
+          const eased = t * t * (3 - 2 * t);
+          const startScreen = sectionTop + sticks[index] - releaseScroll;
+          const desired = startScreen + (meet - startScreen) * eased;
+          const seam = document.querySelector(".about")?.getBoundingClientRect().top ?? view + meet;
+          const screen = seam <= meet ? meet : Math.min(desired, seam);
+          top = scrollY - sectionTop + screen;
+          stuck = -1;
           break;
         }
         cursorScroll = arrivedScroll + hold;
         cursorTop = sticks[index];
       }
-      top = clamp(top, 0, lineEnd + neckDrop);
+      const aboutEdge = document.querySelector(".about")?.getBoundingClientRect().top ?? view + 1;
+      const ceiling = aboutEdge <= meet ? Number.POSITIVE_INFINITY : section.offsetHeight;
+      top = clamp(top, 0, ceiling);
 
-      const faceTopEdge = top - faceSize;
+      const faceTopEdge = top - faceSize * 0.64;
+      inner.style.marginLeft = "";
+      inner.style.marginRight = "";
+      inner.style.width = "";
       let behind = false;
       cards.forEach((card) => {
         const cardTop = origin + card.offsetTop;
         const cardBottom = cardTop + card.offsetHeight;
         const into = top - cardTop;
-        if (into > neckDrop + 10 && faceTopEdge < cardBottom - 12) behind = true;
+        // The chin may rest on the top edge. The next scroll puts her behind the card.
+        if (into > neckDrop + 2 && faceTopEdge < cardBottom - 8) behind = true;
       });
 
       face.style.top = `${top}px`;
       face.style.left = `${lineX}px`;
       face.style.width = `${faceSize}px`;
       face.style.height = `${faceSize}px`;
+      const lastBottom = origin + last.offsetTop + last.offsetHeight;
+      const lineClear = !behind && top > lastBottom + 4;
       face.classList.toggle("is-stuck", stuck !== -1 && !behind);
       face.classList.toggle("is-behind", behind);
+      face.style.zIndex = lineClear ? "4" : "";
+      if (behind || stuck === -1) {
+        landed = -1;
+      } else if (stuck !== landed) {
+        face.classList.remove("is-landing");
+        void face.offsetWidth;
+        face.classList.add("is-landing");
+        landed = stuck;
+      }
       section.style.setProperty("--line-x", `${lineX}px`);
 
       const sectionRect = section.getBoundingClientRect();
       const handedOff = scrollY >= handoff - 0.5;
       const inView = sectionRect.bottom > 24 && sectionRect.top <= view + 2;
-      face.style.opacity = handedOff && inView ? "1" : "0";
+      const aboutTop = aboutEdge;
+      // Solid handoff, same as hero → work: she stays fully opaque until About
+      // is on the same point, then that face takes over.
+      face.style.opacity = handedOff && inView && aboutTop > meet ? "1" : "0";
       if (heroFace) heroFace.style.opacity = handedOff ? "0" : "1";
 
-      if (stuck === -1 || !handedOff || !inView) {
+      if (stuck === -1 || behind || !handedOff || !inView || face.style.opacity === "0") {
         note.classList.remove("is-in");
         note.style.opacity = "0";
         shown = "";
@@ -342,7 +388,7 @@ export default function Projects() {
         note,
         cards,
         section,
-        faceTop: top - faceSize,
+        faceTop: faceTopEdge,
         faceCenter: lineX,
         faceSize,
         narrow,

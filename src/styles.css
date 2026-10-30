@@ -496,15 +496,16 @@ button:focus-visible {
 
   .tagline {
     max-width: 16.2rem;
-    margin-top: 12px;
+    margin-top: 16px;
+    margin-bottom: 28px;
     font-size: 17px;
     line-height: 1.4;
   }
 
   .character-wrap {
     width: auto;
-    height: min(68svh, calc(100svh - 200px));
-    max-width: 96vw;
+    height: min(62svh, calc(100svh - 260px));
+    max-width: 92vw;
     bottom: 0;
   }
 
@@ -669,12 +670,16 @@ button:focus-visible {
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 0;
-  width: 72px;
-  height: 72px;
+  z-index: 3;
+  width: 84px;
+  height: 84px;
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, -100%);
+  transform: translate(-50%, -64%);
+}
+
+.project-face.is-landing {
+  animation: face-bounce 0.55s ease-out;
 }
 
 .project-face.is-stuck {
@@ -827,8 +832,8 @@ button:focus-visible {
   }
 
   .project-face {
-    width: 56px;
-    height: 56px;
+    width: 72px;
+    height: 72px;
   }
 
   .project-note {
@@ -842,6 +847,8 @@ button:focus-visible {
 }
 
 .about {
+  position: relative;
+  z-index: 1;
   height: 620vh;
   height: 620svh;
   background: #c1dbe8;
@@ -853,14 +860,23 @@ button:focus-visible {
   top: 0;
   height: 100vh;
   height: 100svh;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.about-row {
+  position: absolute;
+  z-index: 4;
+  top: clamp(28px, 7vh, 72px);
+  left: clamp(24px, 5vw, 72px);
+  right: clamp(28px, 5vw, 88px);
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) minmax(0, 1fr);
+  column-gap: clamp(28px, 4vw, 72px);
+  align-items: start;
+  pointer-events: none;
 }
 
 .about-title {
-  position: absolute;
-  z-index: 3;
-  top: clamp(28px, 7vh, 76px);
-  left: clamp(24px, 6vw, 88px);
   margin: 0;
   font-family: var(--font-display);
   font-weight: 500;
@@ -918,23 +934,32 @@ button:focus-visible {
 }
 
 .about-icon {
-  z-index: 1;
+  z-index: 3;
   height: auto;
   opacity: 0;
   object-fit: contain;
 }
 
+.about-dot {
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.about-moon {
+  overflow: visible;
+}
+
+.about-moon path {
+  fill: var(--cream);
+  stroke: var(--ink);
+  stroke-width: 1.4;
+}
+
 .about-copy {
-  position: absolute;
-  z-index: 3;
-  top: clamp(118px, 18vh, 188px);
-  left: clamp(300px, 36vw, 480px);
-  right: clamp(32px, 6vw, 96px);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: clamp(16px, 2.4vw, 36px);
-  max-width: 760px;
-  opacity: 0;
+  padding-top: 8px;
 }
 
 .about-copy p {
@@ -943,21 +968,23 @@ button:focus-visible {
   font-weight: 500;
   line-height: 1.45;
   color: rgba(67, 48, 46, 0.88);
+  opacity: 0;
 }
 
 @media (max-width: 800px) {
+  .about-row {
+    grid-template-columns: 1fr;
+    row-gap: 18px;
+  }
+
   .about-title {
     font-size: 42px;
   }
 
   .about-copy {
-    top: auto;
-    bottom: 42%;
-    left: 24px;
-    right: 24px;
     grid-template-columns: 1fr;
     gap: 14px;
-    max-width: none;
+    padding-top: 0;
   }
 
   .about-copy p {
